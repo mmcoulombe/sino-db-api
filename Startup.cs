@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 using MongoDB.Driver;
+using ServiceStack.Redis;
 using SinoDbAPI.Jwt;
 using SinoDbAPI.Services;
 using SinoDbAPI.Settings;
@@ -37,6 +38,9 @@ namespace SinoDbAPI
 
             services.AddSingleton<IMongoClient, MongoClient>(sp =>
                 new MongoClient(Configuration.GetConnectionString("MongoDB")));
+
+            services.AddSingleton<IRedisClientsManager>(sp =>
+            new RedisManagerPool(Configuration.GetConnectionString("Redis")));
 
             services.AddSingleton<IColosseumResultService, ColosseumResultService>();
             services.AddSingleton<IUsersService, UsersService>();

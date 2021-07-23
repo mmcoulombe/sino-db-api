@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using SinoDbAPI.Payloads;
 using SinoDbAPI.Services;
+using System.Threading.Tasks;
 
 namespace SinoDbAPI.Controllers
 {
@@ -19,9 +20,9 @@ namespace SinoDbAPI.Controllers
         }
 
         [HttpPost("authenticate")]
-        public IActionResult Authenticate(AuthenticationRequest request)
+        public async Task<IActionResult> Authenticate(AuthenticationRequest request)
         {
-            var response = _usersService.Authenticate(request.Username, request.Password);
+            var response = await _usersService.Authenticate(request.Username, request.Password);
             if (response == null)
             {
                 return BadRequest(new { message = "Invalid username or password" });
