@@ -1,16 +1,16 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using SinoDbAPI.Models;
 using SinoDbAPI.Payloads;
 using SinoDbAPI.Services;
 using SinoDbAPI.Utils;
-using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Threading.Tasks;
 
 namespace SinoDbAPI.Controllers
 {
     [ApiController]
-    [Route("api/v1/[controller]")]
+    [Route("api/v1/colosseumResult")]
     public class ColosseumResultController : ControllerBase
     {
         private readonly ILogger<ColosseumResultController> _logger;
@@ -23,21 +23,22 @@ namespace SinoDbAPI.Controllers
         }
 
         [HttpGet]
-        public ActionResult<List<ColosseumResult>> Get()
+        public async Task<IActionResult> Get(int? limit)
         {
-            return _resultService.Get();
+            var result = await _resultService.Get(limit);
+            return Ok(result);
         }
 
-        [HttpGet("{id:length(24)}", Name = "GetById")]
-        public ActionResult<ColosseumResult> GetById(string id)
+        [HttpGet("{id:length(24)}", Name = "GetResultById")]
+        public async Task<IActionResult> GetById(string id)
         {
-            var result = _resultService.GetById(id);
+            var result = await _resultService.GetById(id);
             if (result == null)
             {
-                return NotFound();
+                return BadRequest(new { message = "Invalid username or password" });
             }
 
-            return result;
+            return Ok(result);
         }
 
         [HttpGet("search", Name = "GetByGuildName")]
@@ -54,10 +55,10 @@ namespace SinoDbAPI.Controllers
 
         [Authorize]
         [HttpPost]
-        public ActionResult<ColosseumResult> Create(ColosseumResultRequest result)
+        public ActionResult<ColosseumResult> Create([FromHeader(Name= "Authorization")][Required] string requiredHeader, ColosseumResultRequest result)
         {
             var newResult = _resultService.Create(PayloadsConverter.ToColosseumResult(result));
-            return CreatedAtRoute("GetById", new { id = newResult.Id.ToString() }, newResult);
+            return CreatedAtRoute("GetResultById", new { id = newResult.Id.ToString() }, newResult);
         }
 
         [Authorize]

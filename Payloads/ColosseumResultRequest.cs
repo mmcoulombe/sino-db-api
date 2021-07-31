@@ -15,6 +15,10 @@ namespace SinoDbAPI.Payloads
 
         public bool DuringGC { get; set; }
 
+        public bool DuringSPColo { get; set; }
+
+        public string StrategyUsed { get; set; }
+
         public ColosseumGuildStats OurStats { get; set; }
 
         public ColosseumGuildStats EnemyStats { get; set; }

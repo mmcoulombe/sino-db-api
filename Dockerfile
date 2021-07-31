@@ -7,14 +7,14 @@ EXPOSE 443
 
 FROM mcr.microsoft.com/dotnet/sdk:5.0 AS build
 WORKDIR /src
-COPY ["SinoDbAPI/SinoDbAPI.csproj", "SinoDbAPI/"]
-RUN dotnet restore "SinoDbAPI/SinoDbAPI.csproj"
+COPY *.csproj ./
+RUN dotnet restore
+
 COPY . .
-WORKDIR "/src/SinoDbAPI"
-RUN dotnet build "SinoDbAPI.csproj" -c Release -o /app/build
+RUN dotnet build -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "SinoDbAPI.csproj" -c Release -o /app/publish
+RUN dotnet publish -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app

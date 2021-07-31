@@ -1,7 +1,6 @@
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Serialization;
 
 namespace SinoDbAPI.Models
 {
@@ -16,43 +15,40 @@ namespace SinoDbAPI.Models
         public enum FightStrategy
         {
             Combo,
-            Rush
+            Rush,
+            Auto
         }
 
         [JsonIgnore]
-        [BsonId]
-        [BsonRepresentation(BsonType.ObjectId)]
         public string Id { get; set; }
 
-        [JsonPropertyName("Date")]
+        [JsonProperty("Date")]
         public string Date { get; set; }
         
-        [JsonPropertyName("GuildName")]
+        [JsonProperty("GuildName")]
         public string GuildName { get; set; }
         
-        [JsonPropertyName("GuildMaster")]
+        [JsonProperty("GuildMaster")]
         public string GuildMaster { get; set; }
 
-        [JsonPropertyName("Result")]
-        [JsonConverter(typeof(JsonStringEnumConverter))]
-        [BsonRepresentation(BsonType.String)]
+        [JsonProperty("Result")]
+        [JsonConverter(typeof(StringEnumConverter))]
         public FightResult Result { get; set; }
 
-        [JsonPropertyName("DuringGC")]
+        [JsonProperty("DuringGC")]
         public bool DuringGC { get; set; }
 
-        [JsonPropertyName("DuringSPColor")]
+        [JsonProperty("DuringSPColor")]
         public bool DuringSPColo { get; set; }
 
-        [JsonPropertyName("StrategyUsed")]
-        [JsonConverter(typeof(JsonStringEnumConverter))]
-        [BsonRepresentation(BsonType.String)]
+        [JsonProperty("StrategyUsed")]
+        [JsonConverter(typeof(StringEnumConverter))]
         public FightStrategy StrategyUsed { get; set; }
 
-        [JsonPropertyName("OurStats")]
+        [JsonProperty("OurStats")]
         public ColosseumGuildStats OurStats { get; set; }
 
-        [JsonPropertyName("EnemyStats")]
+        [JsonProperty("EnemyStats")]
         public ColosseumGuildStats EnemyStats { get; set; }
     }
 }

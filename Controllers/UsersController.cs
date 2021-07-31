@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.FeatureManagement.Mvc;
 using SinoDbAPI.Payloads;
 using SinoDbAPI.Services;
 using System.Threading.Tasks;
@@ -7,7 +8,7 @@ using System.Threading.Tasks;
 namespace SinoDbAPI.Controllers
 {
     [ApiController]
-    [Route("api/v1/[controller]")]
+    [Route("api/v1/users")]
     public class UsersController : ControllerBase
     {
         private readonly IUsersService _usersService;
@@ -31,10 +32,11 @@ namespace SinoDbAPI.Controllers
             return Ok(response);
         }
 
+        [FeatureGate(Settings.FeaturesList.RegisterAPI)]
         [HttpPost("register")]
-        public IActionResult Register(AuthenticationRequest request)
+        public async Task<IActionResult> Register(AuthenticationRequest request)
         {
-            var response = _usersService.Register(request.Username, request.Password);
+            var response = await _usersService.Register(request.Username, request.Password);
             if (response == null)
             {
                 return BadRequest();
@@ -44,9 +46,9 @@ namespace SinoDbAPI.Controllers
 
         [Authorize]
         [HttpGet]
-        public IActionResult GetAll()
+        public async Task<IActionResult> GetAll()
         {
-            var users = _usersService.GetAll();
+            var users = await _usersService.GetAll();
             return Ok(users);
         }
     }

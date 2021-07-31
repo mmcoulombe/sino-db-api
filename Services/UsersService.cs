@@ -1,6 +1,9 @@
 using BC = BCrypt.Net.BCrypt;
+
+using Core.Arango;
+
 using Microsoft.IdentityModel.Tokens;
-using MongoDB.Driver;
+
 using SinoDbAPI.Extensions;
 using SinoDbAPI.Models;
 using SinoDbAPI.Payloads;
@@ -8,40 +11,45 @@ using SinoDbAPI.Settings;
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using ServiceStack.Redis;
-using System.Text.Json;
+using Newtonsoft.Json;
 
 namespace SinoDbAPI.Services
 {
     public interface IUsersService
     {
         Task<AuthenticationResponse> Authenticate(string username, string password);
-        IEnumerable<User> GetAll();
-        User GetById(string id);
-        User Register(string username, string password);
+        Task<IEnumerable<UserDetailResponse>> GetAll();
+        Task<UserDetailResponse> GetById(string id);
+        Task<string> Register(string username, string password);
     }
 
     public class UsersService : IUsersService
     {
-        private readonly IRedisClient _redisClient;
-        private readonly IMongoCollection<User> _results;
+        private readonly IArangoContext _arangoContext;
         private readonly IAuthenticationSettings _authenticationSettings;
 
-        public UsersService(ISinoDataBaseSettings settings, IAuthenticationSettings authenticationSettings, IMongoClient client, IRedisClientsManager redisClientsManager)
+        private readonly string _databaseName;
+        private readonly string _userCollectionName;
+        private readonly string _sessionCollectionName;
+
+        public UsersService(ISinoDataBaseSettings settings, IAuthenticationSettings authenticationSettings, IArangoContext arangoContext)
         {
-            var database = client.GetDatabase(settings.DatabaseName);
-            _results = database.GetCollection<User>(settings.UserCollectionName);
+            _databaseName = settings.DatabaseName;
+            _arangoContext = arangoContext;
+            _userCollectionName = settings.UserCollectionName;
+            _sessionCollectionName = "session_cache";
             _authenticationSettings = authenticationSettings;
-            _redisClient = redisClientsManager.GetClient();
         }
 
         public async Task<AuthenticationResponse> Authenticate(string username, string password)
         {
-            var queryResult = await _results.FindAsync(x => x.Username == username);
+            var query = string.Format("FOR user IN {0} FILTER user.Username == '{1}' RETURN user", _userCollectionName, username);
+            var queryResult = await _arangoContext.Query.ExecuteAsync<User>(_databaseName, query, null);
             var user = queryResult.FirstOrDefault();
 
             if (user == null || !BC.Verify(password, user.Password))
@@ -50,12 +58,12 @@ namespace SinoDbAPI.Services
             }
 
             var hash = HashUser(user);
-            var session = GetSession(hash);
+            var session = await GetSession(hash);
             if (session is null)
             {
                 var token = generateToken(user);
                 var newSession = user.ToSession(token, TimeSpan.FromHours(1));
-                SaveSessionToken(hash, newSession);
+                await SaveSessionToken(hash, newSession);
 
                 return new AuthenticationResponse(user, token);
             }
@@ -63,8 +71,7 @@ namespace SinoDbAPI.Services
             {
                 var token = generateToken(user);
                 var newSession = user.ToSession(token, TimeSpan.FromHours(1));
-                _redisClient.Replace(hash, newSession);
-                _redisClient.Save();
+                await UpdateSessionToken(hash, newSession);
 
                 return new AuthenticationResponse(user, token);
             }
@@ -72,45 +79,60 @@ namespace SinoDbAPI.Services
             return new AuthenticationResponse(user, session.SessionToken);
         }
 
-        public User Register(string username, string password)
+        public async Task<string> Register(string username, string password)
         {
             var user = User.FromUsernamePassword(username, BC.HashPassword(password));
-            _results.InsertOne(user);
-            return user;
+            var result = await _arangoContext.Document.CreateAsync(_databaseName, _userCollectionName, user);
+            
+            return result.Id;
         }
 
-        public IEnumerable<User> GetAll()
+        public async Task<IEnumerable<UserDetailResponse>> GetAll()
         {
-            return _results.Find(x => true).ToList();
+            var query = string.Format("FOR user IN {0} RETURN user", _userCollectionName );
+            var queryResult = await _arangoContext.Query.ExecuteAsync<User>(_databaseName, query, null);
+            var users = queryResult.ToList().Select(UserDetailResponse.FromUser);
+
+            return users;
         }
 
-        public User GetById(string id)
+        public async Task<UserDetailResponse> GetById(string id)
         {
-            return _results.Find(x => x.Id == id).FirstOrDefault();
+            var query = string.Format("RETURN DOCUMENT('{0}/{1}')", _userCollectionName, id);
+            var result = await _arangoContext.Query.ExecuteAsync<User>(_databaseName, query, null);
+
+            return result.Select(UserDetailResponse.FromUser).FirstOrDefault();
         }
 
-        private Jwt.Session GetSession(string hash)
+        private async Task<Jwt.Session> GetSession(string hash)
         {
-            return _redisClient.Get<Jwt.Session>(hash);
+            var query = string.Format("RETURN DOCUMENT('{0}/{1}').value", _sessionCollectionName, hash);
+            var result = await _arangoContext.Query.ExecuteAsync<Jwt.Session>(_databaseName, query, null);
+
+            return result.FirstOrDefault();
         }
 
-        private void SaveSessionToken(string hash, Jwt.Session session)
+        private Task SaveSessionToken(string hash, Jwt.Session session)
         {
-            _redisClient.Add(hash, session);
-            _redisClient.Save();
+            var jsonSession = JsonConvert.SerializeObject(session);
+            var query = string.Format("INSERT {{ _key: '{0}', value: {1} }} INTO session_cache", hash, jsonSession);
+
+            return _arangoContext.Query.ExecuteAsync<Jwt.Session>(_databaseName, query, null);
         }
 
-        private void UpdateSessionToken(string hash, Jwt.Session session)
+        private Task UpdateSessionToken(string hash, Jwt.Session session)
         {
-            _redisClient.Replace(hash, session);
-            _redisClient.Save();
+            var jsonSession = JsonConvert.SerializeObject(session);
+            var query = string.Format("REPLACE '{0}' WITH {{ value: {1} }} IN session_cache", hash, jsonSession);
+
+            return _arangoContext.Query.ExecuteAsync<Jwt.Session>(_databaseName, query, null);
         }
 
         private string HashUser(User user)
         {
             using (MD5 md5 = MD5.Create())
             {
-                var input = String.Format("{0}{1}", user.Id.ToString(), user.Username.ToString());
+                var input = string.Format("{0}{1}", user.Id.ToString(), user.Username.ToString());
                 byte[] inputBytes = Encoding.ASCII.GetBytes(input);
                 byte[] hashBytes = md5.ComputeHash(inputBytes);
 

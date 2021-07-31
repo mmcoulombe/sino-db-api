@@ -1,50 +1,78 @@
-using MongoDB.Driver;
+using Core.Arango;
+
 using SinoDbAPI.Models;
 using SinoDbAPI.Settings;
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace SinoDbAPI.Services
 {
     public interface IColosseumResultService
     {
-        List<ColosseumResult> Get();
-        ColosseumResult GetById(string id);
-        List<ColosseumResult> GetByGuildName(string guildName);
-        ColosseumResult Create(ColosseumResult newResult);
+        Task<List<ColosseumResult>> Get(int? limit);
+        Task<ColosseumResult> GetById(string id);
+        Task<List<ColosseumResult>> GetByGuildName(string guildName);
+        Task<string> Create(ColosseumResult newResult);
         void Update(string id, ColosseumResult updatedResult);
         void Remove(string id);
     }
 
     public class ColosseumResultService : IColosseumResultService
     {
-        private readonly IMongoCollection<ColosseumResult> _results;
+        private readonly IArangoContext _arangoContext;
 
-        public ColosseumResultService(ISinoDataBaseSettings settings, IMongoClient client)
+        private readonly string _databaseName;
+        private readonly string _collectionName;
+
+        public ColosseumResultService(ISinoDataBaseSettings settings, IArangoContext arangoContext)
         {
-            var database = client.GetDatabase(settings.DatabaseName);
-            _results = database.GetCollection<ColosseumResult>(settings.ColosseumResultCollectionName);
+            _arangoContext = arangoContext;
+            _databaseName = settings.DatabaseName;
+            _collectionName = settings.ColosseumResultCollectionName;
         }
 
-        public List<ColosseumResult> Get() =>
-            _results.Find(elem => true).ToList();
-
-        public ColosseumResult GetById(string id) =>
-            _results.Find(elem => elem.Id.Equals(id)).FirstOrDefault();
-
-        public List<ColosseumResult> GetByGuildName(string guildName) =>
-            _results.Find(elem => elem.GuildName.Equals(guildName)).ToList();
-
-        public ColosseumResult Create(ColosseumResult newResult)
+        public async Task<List<ColosseumResult>> Get(int? limit)
         {
-            _results.InsertOne(newResult);
-            return newResult;
+            var limitStr = (!limit.HasValue || limit <= 0) ? "" : $"LIMIT {limit}";
+
+            var query = string.Format("FOR result IN {0} {1} RETURN result", _collectionName, limitStr);
+            var result = await _arangoContext.Query.ExecuteAsync<ColosseumResult>(_databaseName, query, null);
+            return result.ToList();
         }
 
-        public void Update(string id, ColosseumResult updatedResult) =>
-            _results.ReplaceOne(elem => elem.Id == id, updatedResult);
+        public async Task<ColosseumResult> GetById(string id)
+        {
+            var query = string.Format("RETURN DOCUMENT('{0}/{1}')", _collectionName, id);
+            var result = await _arangoContext.Query.ExecuteAsync<ColosseumResult>(_databaseName, query, null) ;
+            return result.FirstOrDefault();
+        }
 
-        public void Remove(string id) =>
-            _results.DeleteOne(elem => elem.Id == id);
+        public async Task<List<ColosseumResult>> GetByGuildName(string guildName)
+        {
+
+            var query = string.Format("FOR result IN {0} FILTER result.GuildName == '{1}' RETURN result", _collectionName, guildName);
+            var result = await _arangoContext.Query.ExecuteAsync<ColosseumResult>(_databaseName, query, null);
+            return result.ToList();
+        }
+
+        public async Task<string> Create(ColosseumResult newResult)
+        {
+            var result = await _arangoContext.Document.CreateAsync<ColosseumResult>(_databaseName, _collectionName, newResult);
+            return result.Id;
+        }
+
+        public void Update(string id, ColosseumResult updatedResult)
+        {
+            return;
+        }
+
+
+        public void Remove(string id)
+        {
+            _arangoContext.Document.DeleteAsync<ColosseumResult>(_databaseName, _collectionName, id);
+        }
     }
 }

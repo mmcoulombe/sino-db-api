@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.FeatureManagement;
 using Microsoft.OpenApi.Models;
-using MongoDB.Driver;
-using ServiceStack.Redis;
+using Core.Arango;
 using SinoDbAPI.Jwt;
 using SinoDbAPI.Services;
 using SinoDbAPI.Settings;
@@ -30,23 +30,25 @@ namespace SinoDbAPI
             services.Configure<AuthenticationSettings>(
                 Configuration.GetSection(nameof(AuthenticationSettings)));
 
+            services.AddFeatureManagement(Configuration.GetSection("FeaturesActivation"));
+
             services.AddSingleton<ISinoDataBaseSettings>(sp =>
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SinoDataBaseSettings>>().Value);
 
             services.AddSingleton<IAuthenticationSettings>(sp =>
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthenticationSettings>>().Value);
 
-            services.AddSingleton<IMongoClient, MongoClient>(sp =>
-                new MongoClient(Configuration.GetConnectionString("MongoDB")));
-
-            services.AddSingleton<IRedisClientsManager>(sp =>
-            new RedisManagerPool(Configuration.GetConnectionString("Redis")));
-
             services.AddSingleton<IColosseumResultService, ColosseumResultService>();
+            services.AddSingleton<INightmareService, NightmareService>();
             services.AddSingleton<IUsersService, UsersService>();
 
+            services.AddArango(Configuration.GetConnectionString("ArangoDB"));
+
             services.AddControllers()
-                .AddNewtonsoftJson(options => options.UseMemberCasing());
+                .AddNewtonsoftJson(options => {
+                    options.UseMemberCasing();
+                    options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
+                });
 
             services.AddSwaggerGen(c =>
             {
@@ -64,7 +66,7 @@ namespace SinoDbAPI
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "SinoDbAPI v1"));
             }
 
-            app.UseHttpsRedirection();
+            //app.UseHttpsRedirection();
 
             app.UseRouting();
 
